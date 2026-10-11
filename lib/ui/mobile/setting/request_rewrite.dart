@@ -35,6 +35,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../component/http_method_popup.dart';
 import 'rewrite/rewrite_replace.dart';
+import 'dart:typed_data';
 
 class MobileRequestRewrite extends StatefulWidget {
   final RequestRewriteManager requestRewrites;
@@ -91,11 +92,11 @@ class _MobileRequestRewriteState extends State<MobileRequestRewrite> {
 
   //导入
   Future<void> import() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.any);
-    if (result == null || result.files.isEmpty) {
+    List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.any);
+    if (result == null || result.isEmpty) {
       return;
     }
-    var file = result.files.single.xFile;
+    var file = result.single.xFile;
 
     try {
       List json = jsonDecode(utf8.decode(await file.readAsBytes()));

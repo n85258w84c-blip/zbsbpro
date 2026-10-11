@@ -337,8 +337,8 @@ class _MobileRequestCryptoPageState extends State<MobileRequestCryptoPage> {
 
   Future<void> _import(RequestCryptoManager manager) async {
     try {
-      FilePickerResult? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
-      final path = result?.files.single.path;
+      List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
+      final path = result?.single.path;
       if (path == null) return;
       final content = await File(path).readAsString();
       final List list = jsonDecode(content);

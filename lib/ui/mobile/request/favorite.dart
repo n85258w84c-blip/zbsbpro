@@ -43,6 +43,7 @@ import 'package:proxypin/utils/curl.dart';
 import 'package:proxypin/utils/lang.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
 
 /// 收藏列表页面
 /// @author WangHongEn
@@ -71,7 +72,7 @@ class _FavoritesState extends State<MobileFavorites> {
 
   Future<String?> _materializePickedFile(PlatformFile file) async {
     if (file.path != null) return file.path!;
-    final bytes = await file.readAsBytes();
+    final bytes = file.bytes ?? Uint8List(0);
     final tmp = await File('${Directory.systemTemp.path}/${file.name}').create();
     await tmp.writeAsBytes(bytes, flush: true);
     return tmp.path;
@@ -104,7 +105,7 @@ class _FavoritesState extends State<MobileFavorites> {
                   onPressed: () async {
                     final result = await FilePicker.pickFiles(
                         type: FileType.custom, allowedExtensions: ['json', 'har']);
-                    final file = result?.files.isNotEmpty == true ? result!.files.first : null;
+                    final file = result?.isNotEmpty == true ? result!.first : null;
                     if (file == null) return;
                     final path = await _materializePickedFile(file);
                     if (path == null) return;

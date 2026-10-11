@@ -15,6 +15,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../../network/util/logger.dart';
 import '../../../utils/platform.dart';
+import 'dart:typed_data';
 
 bool _refresh = false;
 
@@ -95,11 +96,11 @@ class _RequestMapPageState extends State<MobileRequestMapPage> {
 
   //导入js
   Future<void> import() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.any);
-    if (result == null || result.files.isEmpty) {
+    List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.any);
+    if (result == null || result.isEmpty) {
       return;
     }
-    var file = result.files.single.xFile;
+    var file = result.single.xFile;
 
     try {
       List json = jsonDecode(utf8.decode(await file.readAsBytes()));

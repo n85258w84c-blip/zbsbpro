@@ -12,6 +12,7 @@ import '../component/app_dialog.dart';
 import '../component/json/json_text.dart';
 import '../component/json/json_viewer.dart';
 import '../component/json/theme.dart';
+import 'dart:typed_data';
 
 /// Simple WebSocket request page: connect to ws/wss URL, send text, view messages
 class WebSocketRequestPage extends StatefulWidget {

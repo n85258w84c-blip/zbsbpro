@@ -35,6 +35,7 @@ import 'package:proxypin/utils/lang.dart';
 import 'package:proxypin/utils/platform.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:typed_data';
 
 /// @author wanghongen
 /// 2023/10/19
@@ -121,11 +122,11 @@ class _MobileScriptState extends State<MobileScript> {
 
   //导入js
   Future<void> import() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.any);
-    if (result == null || result.files.isEmpty) {
+    List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.any);
+    if (result == null || result.isEmpty) {
       return;
     }
-    var file = result.files.single.xFile;
+    var file = result.single.xFile;
     try {
       var scriptManager = (await ScriptManager.instance);
       var json = jsonDecode(utf8.decode(await file.readAsBytes()));

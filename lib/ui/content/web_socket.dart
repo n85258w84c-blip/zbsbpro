@@ -91,7 +91,7 @@ class Websocket extends StatelessWidget {
                                           customItem: ContextMenuButtonItem(
                                             label: localizations.download,
                                             onPressed: () async {
-                                              String? path = (await FilePicker.saveFile(
+                                              final path = (await FilePicker.saveFile(
                                                   fileName: "websocket.txt", bytes: message.payloadData));
                                               if (path != null && context.mounted) {
                                                 CustomToast.success(localizations.saveSuccess).show(context);

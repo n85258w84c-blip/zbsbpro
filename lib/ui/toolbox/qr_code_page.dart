@@ -229,9 +229,9 @@ class _QrDecodeState extends State<_QrDecode> with AutomaticKeepAliveClientMixin
 
     if (Platforms.isDesktop()) {
       //<String>['jpg', 'png', 'jpeg']
-      FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
-      if (result == null || result.files.isEmpty) return null;
-      return result.files.single.path;
+      List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.image);
+      if (result == null || result.isEmpty) return null;
+      return result.single.path;
     }
 
     return null;
@@ -357,7 +357,7 @@ class _QrEncodeState extends State<_QrEncode> with AutomaticKeepAliveClientMixin
     var imageBytes = await toImageBytes();
     if (imageBytes == null) return;
 
-    String? path = await FilePicker.saveFile(fileName: "qrcode.png", bytes: imageBytes, type: FileType.image);
+    final path = await FilePicker.saveFile(fileName: "qrcode.png", bytes: imageBytes, type: FileType.image);
     if (path == null) return;
     if (mounted) {
       CustomToast.success(localizations.saveSuccess).show(context);

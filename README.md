@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ProxyPin
 
 English | [中文](README_CN.md)
@@ -48,3 +49,6 @@ TG: https://t.me/proxypin_en
 
 ### Powered by
 [![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
+=======
+# zbsbpro
+>>>>>>> 6e51f5f03f46f52123e2985aeaa5264a57bf2e44

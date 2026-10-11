@@ -214,13 +214,13 @@ class _MobileHistoryState extends State<MobileHistory> {
 
   //导入har
   Future<void> import(HistoryStorage storage) async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.any);
-    if (result == null || result.files.isEmpty) {
+    List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.any);
+    if (result == null || result.isEmpty) {
       return;
     }
 
     try {
-      var historyItem = await storage.addHarFile(result.files.single.xFile);
+      var historyItem = await storage.addHarFile(result.single.xFile);
       setState(() {
         toRequestsView(historyItem, storage);
         FlutterToastr.show(localizations.importSuccess, context);

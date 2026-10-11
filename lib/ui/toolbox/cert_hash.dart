@@ -26,6 +26,7 @@ import 'package:proxypin/network/util/cert/x509.dart';
 import 'package:proxypin/ui/component/buttons.dart';
 import 'package:proxypin/ui/component/text_field.dart';
 import 'package:proxypin/utils/platform.dart';
+import 'dart:typed_data';
 
 ///证书哈希名称查看
 ///@author Hongen Wang
@@ -83,11 +84,11 @@ class _CertHashPageState extends State<CertHashPage> {
           Wrap(alignment: WrapAlignment.end, children: [
             ElevatedButton.icon(
                 onPressed: () async {
-                  FilePickerResult? result = await FilePicker.pickFiles(
+                  List<PlatformFile>? result = await FilePicker.pickFiles(
                       type: FileType.custom, allowedExtensions: ['crt', 'pem', 'cer', 'der']);
                   if (result == null) return;
 
-                  File file = File(result.files.single.path!);
+                  File file = File(result.single.path!);
                   var bytes = await file.readAsBytes();
                   input.text = tryDerFormat(bytes) ?? String.fromCharCodes(bytes);
                   getSubjectName();

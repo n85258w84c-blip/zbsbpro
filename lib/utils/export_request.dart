@@ -163,13 +163,10 @@ Future<void> exportRequestsAsFiles(
     if (isDesktop || Platform.isAndroid) {
       String? selectedDirectory;
 
-      if (isDesktop) {
-        selectedDirectory = await FilePicker.saveFile(
-                fileName: folderName, type: FileType.custom, allowedExtensions: [''], bytes: Uint8List(0))
-            .then((path) => path != null ? "${Directory(path).parent.path}/$folderName" : null);
-      } else {
-        selectedDirectory = await FilePicker.getDirectoryPath();
-      }
+      // 直接用目录选择器：saveFile 会在磁盘上创建空文件，导致无法再以同名创建文件夹
+      final baseDirectory = await FilePicker.getDirectoryPath();
+      if (baseDirectory == null) return;
+      selectedDirectory = '$baseDirectory/$folderName';
       if (selectedDirectory == null) return;
 
       // 创建主文件夹

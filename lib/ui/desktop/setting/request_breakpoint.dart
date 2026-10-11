@@ -48,8 +48,8 @@ class _RequestBreakpointPageState extends State<RequestBreakpointPage> {
   }
 
   Future<void> _import() async {
-    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
-    final path = result?.files.single.path;
+    List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
+    final path = result?.single.path;
     if (path == null) return;
     File file = File(path);
     try {
@@ -74,7 +74,7 @@ class _RequestBreakpointPageState extends State<RequestBreakpointPage> {
     if (exportRules.isEmpty) return;
 
     var json = exportRules.map((e) => e.toJson()).toList();
-    String? outputFile = await FilePicker.saveFile(fileName: 'request_breakpoint_rules.json', bytes: utf8.encode(jsonEncode(json)));
+    final outputFile = await FilePicker.saveFile(fileName: 'request_breakpoint_rules.json', bytes: utf8.encode(jsonEncode(json)));
     if (outputFile == null) return;
     try {
       if (mounted) CustomToast.success(localizations.exportSuccess).show(context);

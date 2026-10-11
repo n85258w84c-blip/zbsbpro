@@ -12,6 +12,7 @@ import 'package:proxypin/ui/desktop/ssl/pc_cert.dart';
 import 'package:proxypin/utils/ip.dart';
 import 'package:proxypin/utils/platform.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:typed_data';
 
 class SslWidget extends StatefulWidget {
   final ProxyServer proxyServer;
@@ -75,7 +76,7 @@ class _SslState extends State<SslWidget> {
   //import method
   Widget importMenu() {
     return item(localizations.importCaP12, onPressed: () async {
-      FilePickerResult? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['p12', 'pfx']);
+      List<PlatformFile>? result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['p12', 'pfx']);
       if (result == null || !mounted) return;
 
       //entry password
@@ -100,7 +101,7 @@ class _SslState extends State<SslWidget> {
                     TextButton(onPressed: () => Navigator.pop(context), child: Text(localizations.cancel)),
                     TextButton(
                       onPressed: () async {
-                        var file = File(result.files.single.path!);
+                        var file = File(result.single.path!);
                         var bytes = await file.readAsBytes();
                         try {
                           await CertificateManager.importPkcs12(bytes, password);

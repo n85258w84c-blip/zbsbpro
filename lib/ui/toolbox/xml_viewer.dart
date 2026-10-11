@@ -117,11 +117,11 @@ class _XmlViewerPageState extends State<XmlViewerPage> {
     String? path;
     try {
       final result = await FilePicker.pickFiles(type: FileType.any);
-      path = result?.files.single.path;
+      path = result?.single.path;
     } catch (_) {
       // 某些平台（e.g. Linux）custom + extensions 可能抛错，回退到任意类型
       final result = await FilePicker.pickFiles();
-      path = result?.files.single.path;
+      path = result?.single.path;
     }
 
     if (path == null) return;
@@ -148,7 +148,7 @@ class _XmlViewerPageState extends State<XmlViewerPage> {
       return;
     }
 
-    String? path = await FilePicker.saveFile(fileName: 'data.xml', bytes: utf8.encode(text));
+    final path = await FilePicker.saveFile(fileName: 'data.xml', bytes: utf8.encode(text));
     if (path == null) return;
     if (mounted) _toast(localizations.saveSuccess);
   }
