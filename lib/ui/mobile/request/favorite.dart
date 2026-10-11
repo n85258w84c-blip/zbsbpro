@@ -383,7 +383,10 @@ class _FavoriteItemState extends State<_FavoriteItem> {
     final proxyInfo = await resolveRepeatProxy(request);
     Navigator.of(context).push(MaterialPageRoute(
         builder: (context) => futureWidget(SharedPreferences.getInstance(),
-            (prefs) => MobileCustomRepeat(onRepeat: () => sendRepeat(request, proxyInfo), prefs: prefs))));
+            (prefs) => MobileCustomRepeat(onRepeat: () => sendRepeat(request, proxyInfo),
+                onRepeatBurst: (n, waitResponse) =>
+                    sendRepeatBurst(request, proxyInfo, n, waitResponse: waitResponse),
+                onBurstDone: (total, ok, ms) => showBurstResult(total, ok, ms), prefs: prefs))));
   }
 
   /// 重放请求（普通重放 / 高级重放共用）
@@ -417,6 +420,50 @@ class _FavoriteItemState extends State<_FavoriteItem> {
     if (mounted) {
       FlutterToastr.show(localizations.reSendRequest, context);
     }
+  }
+
+  /// 并发重放结果提示（success < 0 表示未等待响应、未统计）
+  void showBurstResult(int total, int success, int elapsedMs) {
+    if (!mounted) return;
+    final msg = success < 0
+        ? '已发起 $total 条（未等待响应），发起耗时 ${elapsedMs}ms'
+        : '并发重放完成：共 $total 条，成功 $success 条，耗时 ${elapsedMs}ms';
+    FlutterToastr.show(msg, context);
+  }
+
+  /// 并发重放：一次性发起 count 个请求（真正的「同时」）
+  ///
+  /// waitResponse=true  —— 等全部返回后统计成功数与耗时
+  /// waitResponse=false —— 只发不看响应，发起完立刻返回（纯压力测试，最快）
+  ///                       返回 -1 表示未统计
+  Future<int> sendRepeatBurst(HttpRequest request, ProxyInfo? proxyInfo, int count,
+      {bool waitResponse = true}) async {
+    var target = proxyInfo;
+    if (target != null && !widget.proxyServer.isRunning) {
+      target = null; // 代理中途被关闭，退回直连
+    }
+
+    // 只发不看：连续发起，不保留 Future，发起完即返回
+    if (!waitResponse) {
+      for (int i = 0; i < count; i++) {
+        var httpRequest = request.copy(uri: request.requestUrl);
+        // 必须挂 catchError，否则连接失败会变成未捕获异常
+        HttpClients.proxyRequest(httpRequest, proxyInfo: target).catchError((_) => null);
+      }
+      return -1;
+    }
+
+    // 先连续发起全部连接，再统一等结果，保证并发度
+    final futures = <Future<int>>[];
+    for (int i = 0; i < count; i++) {
+      var httpRequest = request.copy(uri: request.requestUrl);
+      futures.add(HttpClients.proxyRequest(httpRequest, proxyInfo: target)
+          .then<int>((_) => 1)
+          .catchError((_) => 0));
+    }
+
+    final results = await Future.wait(futures);
+    return results.fold<int>(0, (sum, ok) => sum + ok);
   }
 
   /// 重放一次：先解析路径，再发送（普通重放走这里）

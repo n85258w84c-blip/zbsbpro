@@ -20,6 +20,7 @@ import 'dart:math';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_toastr/flutter_toastr.dart';
 import 'package:proxypin/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,9 +28,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// @author wang
 class MobileCustomRepeat extends StatefulWidget {
   final Function onRepeat;
+  /// 并发发送：一次发起 count 条，返回成功条数
+  final Future<int> Function(int count, bool waitResponse)? onRepeatBurst;
+  /// 并发结束回调 (总条数, 成功条数, 耗时ms)
+  final void Function(int total, int success, int elapsedMs)? onBurstDone;
   final SharedPreferences prefs;
 
-  const MobileCustomRepeat({super.key, required this.onRepeat, required this.prefs});
+  const MobileCustomRepeat(
+      {super.key, required this.onRepeat, this.onRepeatBurst, this.onBurstDone, required this.prefs});
 
   @override
   State<StatefulWidget> createState() => _CustomRepeatState();
@@ -41,9 +47,12 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
   TextEditingController minInterval = TextEditingController(text: '0');
   TextEditingController maxInterval = TextEditingController(text: '1000');
   TextEditingController delay = TextEditingController(text: '0');
+  TextEditingController concurrency = TextEditingController(text: '1000');
 
   bool fixed = true;
   bool keepSetting = true;
+  bool concurrent = false; // 并发模式：忽略间隔，瞬间发起
+  bool waitResponse = true; // 是否等待响应并发回统计（关闭=只发不看，最快）
 
   DateTime? time;
 
@@ -63,6 +72,11 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
       maxInterval.text = data['maxInterval'];
       delay.text = data['delay'];
       fixed = data['fixed'] == true;
+      concurrent = data['concurrent'] == true;
+      waitResponse = data['waitResponse'] != false;
+      if (data['concurrency'] != null) {
+        concurrency.text = data['concurrency'];
+      }
     }
   }
 
@@ -71,6 +85,7 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
     count.dispose();
     interval.dispose();
     delay.dispose();
+    concurrency.dispose();
     super.dispose();
   }
 
@@ -98,7 +113,10 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
                         'minInterval': minInterval.text,
                         'maxInterval': maxInterval.text,
                         'delay': delay.text,
-                        'fixed': fixed
+                        'fixed': fixed,
+                        'concurrent': concurrent,
+                        'concurrency': concurrency.text,
+                        'waitResponse': waitResponse
                       }));
                 } else {
                   widget.prefs.remove('customerRepeat');
@@ -114,7 +132,13 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
                   delayValue += schedule.difference(now).inMilliseconds;
                 }
 
-                Future.delayed(Duration(milliseconds: delayValue), () => submitTask(int.parse(count.text)));
+                Future.delayed(Duration(milliseconds: delayValue), () {
+                  if (concurrent) {
+                    submitConcurrent(int.parse(count.text), int.tryParse(concurrency.text) ?? int.parse(count.text));
+                  } else {
+                    submitTask(int.parse(count.text));
+                  }
+                });
                 Navigator.of(context).pop();
               },
             )
@@ -127,6 +151,8 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
               child: Column(
                 children: <Widget>[
                   field(localizations.repeatCount, textField(count)), //次数
+                  const SizedBox(height: 6),
+                  concurrentWidget(), //并发模式
                   const SizedBox(height: 6),
                   intervalWidget(), //间隔
                   const SizedBox(height: 6),
@@ -183,6 +209,71 @@ class _CustomRepeatState extends State<MobileCustomRepeat> {
   }
 
   String _two(int v) => v.toString().padLeft(2, '0');
+
+  //并发模式开关
+  Widget concurrentWidget() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      field(
+          '并发模式',
+          Transform.scale(
+              scale: 0.82,
+              child: CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('瞬间并发发送（压力测试）', style: TextStyle(fontSize: 13)),
+                  value: concurrent,
+                  onChanged: (val) => setState(() => concurrent = val == true)))),
+      if (concurrent) ...[
+        const SizedBox(height: 6),
+        field('并发数', textField(concurrency, style: const TextStyle(fontSize: 13))),
+        const SizedBox(height: 4),
+        const Text('≥ 次数即一次性全发（不分批）；最大 1000',
+            style: TextStyle(fontSize: 11, color: Colors.grey)),
+        Transform.scale(
+            scale: 0.82,
+            child: CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('等待响应并统计结果', style: TextStyle(fontSize: 13)),
+                value: waitResponse,
+                onChanged: (val) => setState(() => waitResponse = val == true))),
+        const Text('关闭=只发不看响应，发起最快（纯压力测试）；开启=结束后报告成功数与耗时',
+            style: TextStyle(fontSize: 11, color: Colors.grey)),
+      ],
+    ]);
+  }
+
+  /// 并发重放：一次性把全部请求发出去，适合压力测试
+  ///
+  /// total —— 总条数；limit —— 同时在飞的上限（<=0 表示不限，一次性全发）
+  /// 并发度超过 total 时按 total 发；否则分批发，每批 limit 条。
+  Future<void> submitConcurrent(int total, int limit) async {
+    final sw = Stopwatch()..start();
+    int success = 0;
+
+    final burst = widget.onRepeatBurst;
+    if (burst == null) {
+      // 未提供并发回调时退化为紧密循环（至少省掉 Future.delayed 的调度开销）
+      for (int i = 0; i < total; i++) {
+        widget.onRepeat.call();
+      }
+      sw.stop();
+      widget.onBurstDone?.call(total, -1, sw.elapsedMilliseconds);
+      return;
+    }
+
+    int remain = total;
+    final wave = limit <= 0 ? total : limit;
+    while (remain > 0) {
+      var n = remain > wave ? wave : remain;
+      if (n > 1000) n = 1000; // 单批上限，避免 fd 耗尽
+      success += await burst(n, waitResponse);
+      remain -= n;
+    }
+
+    sw.stop();
+    widget.onBurstDone?.call(total, success, sw.elapsedMilliseconds);
+  }
 
   //定时重放
   void submitTask(int counter) {
