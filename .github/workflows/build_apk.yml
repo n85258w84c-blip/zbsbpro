@@ -1,0 +1,127 @@
+name: Build Flutter APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+jobs:
+  build:
+    # 锁定 24.04，避开 2026-10-19 起 ubuntu-latest 迁移到 26.04 的变动
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # ---- 磁盘清理：runner 只有约 14GB 可用，Flutter+Android SDK+双 NDK+Rust 会撑爆 ----
+      - name: Free disk space
+        run: |
+          set -e
+          echo "=== before ==="
+          df -h /
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/local/lib/android/sdk/emulator || true
+          sudo rm -rf /usr/local/lib/android/sdk/system-images || true
+          sudo rm -rf /usr/local/share/boost || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/hostedtoolcache/Ruby || true
+          sudo rm -rf /opt/hostedtoolcache/go || true
+          sudo rm -rf /opt/ghc /usr/local/.ghcup || true
+          sudo rm -rf /usr/share/swift /usr/lib/swift || true
+          sudo rm -rf /opt/google/chrome /opt/microsoft/msedge || true
+          sudo rm -rf /usr/lib/mono || true
+          sudo rm -rf /usr/local/julia* || true
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          echo "=== after ==="
+          df -h /
+      - name: Setup Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # Dart3.12.2 对应真实官方版本 Flutter 3.38.0，-3.44.9cache关闭，拒绝脏缓存
+      - name: Setup Flutter (Dart 3.12.2, 满足 pubspec.lock)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          cache: false
+
+      - name: Show versions
+        run: |
+          flutter --version
+          dart --version
+      - name: Generate debug signing key & key.properties
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          printf 'storeFile=%s\nstorePassword=android\nkeyAlias=androiddebugkey\nkeyPassword=android\n' \
+            "$HOME/.android/debug.keystore" > android/key.properties
+      - name: Accept Android SDK licenses
+        run: yes | flutter doctor --android-licenses > /dev/null 2>&1 || true
+      # 首选：直接从 Gradle 官方仓库取现成的 wrapper jar（不需要本地 Gradle 环境）
+      # 失败：再用 Gradle 发行版执行 wrapper 任务（注意必须在含 settings.gradle 的目录里跑）
+      - name: Restore gradle-wrapper.jar if missing
+        run: |
+          set -e
+          if [ -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "gradle-wrapper.jar already present, skip."
+            exit 0
+          fi
+          PROPS=android/gradle/wrapper/gradle-wrapper.properties
+          URL=$(sed -n 's/^distributionUrl=//p' "$PROPS" | tr -d '\\' | tr -d '\r' | tr -d '"')
+          GV=$(echo "$URL" | grep -oE 'gradle-[0-9]+(\.[0-9]+)*' | head -n1 | cut -d- -f2)
+          if [ -z "$GV" ]; then GV=8.11.1; fi
+          echo "gradle version = $GV"
+          mkdir -p android/gradle/wrapper
+          echo "--- try direct download from gradle/gradle repo ---"
+          if curl -fsSL --retry 3 --retry-delay 5 \
+               -o android/gradle/wrapper/gradle-wrapper.jar \
+               "https://raw.githubusercontent.com/gradle/gradle/v${GV}/gradle/wrapper/gradle-wrapper.jar"; then
+            echo "downloaded ok"
+            ls -l android/gradle/wrapper/
+            exit 0
+          fi
+          echo "direct download failed, fallback to gradle wrapper task"
+          echo "--- fallback: run gradle wrapper task ---"
+          curl -fsSL --retry 3 --retry-delay 5 -o /tmp/gradle.zip "$URL"
+          rm -rf /opt/gradle-dist && mkdir -p /opt/gradle-dist
+          unzip -q -o /tmp/gradle.zip -d /opt/gradle-dist
+          GRADLE_BIN=$(find /opt/gradle-dist -type f -path '*/bin/gradle' -perm -u+x | head -n1)
+          if [ -z "$GRADLE_BIN" ]; then
+            echo "FATAL: gradle binary not found"
+            find /opt/gradle-dist -maxdepth 3 | head -20
+            exit 1
+          fi
+          echo "gradle binary = $GRADLE_BIN"
+          # 关键：wrapper 任务要求目录是合法的 Gradle 工程，必须先放一个 settings.gradle
+          TMPD=$(mktemp -d)
+          : > "$TMPD/settings.gradle"
+          (cd "$TMPD" && "$GRADLE_BIN" wrapper --gradle-version "$GV" --distribution-type all)
+          cp "$TMPD/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+          ls -l android/gradle/wrapper/
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 增加环境变量关闭cargokit文件监听，彻底消除 Already watching path
+      - name: Build arm64-v8a Release APK
+        env:
+          CARGOKIT_WATCH: "0"
+        run: flutter build apk --release --target-platform android-arm64
+
+      # 构建完立刻上传，随后释放 build 目录，避免后续步骤再撑爆磁盘
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxypin-arm64
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Disk usage summary
+        if: always()
+        run: df -h /
